@@ -30,9 +30,6 @@ jobs:
       
       - name: Obfuscar Código com PyArmor
         run: cd .. && pyarmor gen -O dist gustavotube
-      
-      - name: Mover Static para Diretorio PyArmor
-        run: cd .. && cp -r gustavotube/static dist/gustavotube
 
       - name: Mover .PyInstaller/main_pyarmor.spec para Diretorio PyArmor
         run: cd .. && cp -r gustavotube/.pyinstaller/main_pyarmor.spec dist/gustavotube
@@ -78,9 +75,6 @@ jobs:
       
       - name: Obfuscar Código com PyArmor
         run: cd .. && pyarmor gen -O dist gustavotube
-      
-      - name: Mover Static para Diretorio PyArmor
-        run: cd .. && cp -r gustavotube/static dist/gustavotube
 
       - name: Mover .PyInstaller/main_pyarmor.spec para Diretorio PyArmor
         run: cd .. && cp -r gustavotube/.pyinstaller/main_pyarmor.spec dist/gustavotube
@@ -127,9 +121,6 @@ jobs:
       - name: Obfuscar Código com PyArmor
         run: cd .. && pyarmor gen -O dist gustavotube
       
-      - name: Mover Static para Diretorio PyArmor
-        run: cd .. && cp -r gustavotube/static dist/gustavotube
-
       - name: Mover .PyInstaller/main_pyarmor.spec para Diretorio PyArmor
         run: cd .. && cp -r gustavotube/.pyinstaller/main_pyarmor.spec dist/gustavotube
 
