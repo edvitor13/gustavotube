@@ -1,3 +1,4 @@
+import os
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import yt_dlp
@@ -36,9 +37,21 @@ def download_video():
         messagebox.showwarning("Input Error", "Por favor, insira uma URL do YouTube.")
         return
 
-    # Abre o diálogo para escolher o diretório de salvamento
-    save_directory = filedialog.askdirectory(title="Selecione o local para salvar o download")
-    if not save_directory:
+    # Extrai o nome do vídeo sem baixar
+    with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+        info = ydl.extract_info(url, download=False)
+        default_filename = ydl.prepare_filename(info).rsplit(".", 1)[0]  # Obtém o nome original do vídeo
+
+    # Abre o diálogo para escolher o local e o nome do arquivo
+    save_path = filedialog.asksaveasfilename(
+        initialdir=".", 
+        title="Salvar arquivo como", 
+        initialfile=default_filename, 
+        defaultextension=f".{format_choice.lower()}",
+        filetypes=[(f"Arquivo {format_choice}", f"*.{format_choice.lower()}")]
+    )
+    
+    if not save_path:
         return  # O usuário cancelou a seleção
 
     ydl_opts = {}
@@ -48,7 +61,7 @@ def download_video():
             if format_choice == "MP4":
                 ydl_opts = {
                     'format': f'bestvideo[height<={resolution_choice}]+bestaudio/best',
-                    'outtmpl': f'{save_directory}/%(title)s ({resolution_choice}).%(ext)s',  # Salva no diretório escolhido
+                    'outtmpl': save_path,  # Salva no caminho escolhido
                     'merge_output_format': 'mp4',
                     'progress_hooks': [my_hook],
                 }
@@ -60,17 +73,7 @@ def download_video():
                         'preferredcodec': 'mp3',
                         'preferredquality': resolution_choice,
                     }],
-                    'outtmpl': f'{save_directory}/%(title)s.%(ext)s', 
-                    'progress_hooks': [my_hook],
-                }
-            else: 
-                ydl_opts = {
-                    'format': 'bestvideo+bestaudio/best',
-                    'postprocessors': [{
-                        'key': 'FFmpegVideoConvertor',
-                        'preferedformat': 'mp4' 
-                    }],
-                    'outtmpl': f'{save_directory}/%(title)s.%(ext)s', 
+                    'outtmpl': save_path, 
                     'progress_hooks': [my_hook],
                 }
 
@@ -80,6 +83,9 @@ def download_video():
             messagebox.showinfo("Sucesso", "Download concluído!")
             progress_window.destroy()
             progress_window.grab_release()
+
+            # Abre o diretório com o arquivo selecionado
+            open_file_directory(save_path)
 
         except Exception as e:
             messagebox.showerror("Erro", f"Ocorreu um erro ao baixar o vídeo: {str(e)}")
@@ -124,6 +130,17 @@ def download_video():
 
     # Inicia o download em uma thread separada
     threading.Thread(target=download_thread).start()
+
+def open_file_directory(file_path):
+    folder_path = os.path.dirname(file_path)
+    file_name = os.path.basename(file_path)
+    
+    if os.name == 'nt':  # Windows
+        os.startfile(folder_path)  # Abre o diretório
+    elif os.name == 'posix':  # Linux, MacOS
+        os.system(f'xdg-open "{folder_path}"')
+    else:
+        messagebox.showwarning("Erro", "Sistema operacional não suportado para abrir diretório.")
 
 # Configuração da janela principal
 root = tk.Tk()
