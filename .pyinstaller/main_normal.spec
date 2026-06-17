@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-
+from PyInstaller.utils.hooks import collect_data_files
 
 a = Analysis(
     ['main.py'],
@@ -7,10 +7,13 @@ a = Analysis(
     binaries=[],
     datas=[
         ("gustavotube", "gustavotube"),
-        ("gustavotube.ico", ".")
+        ("gustavotube.ico", "."),
+        *collect_data_files('yt_dlp_ejs'),
     ],
     hiddenimports=[
         "gustavotube",
+        "yt_dlp_ejs",
+        "webbrowser",
         "tkinter",
         "tkinter.filedialog",
         "tkinter.ttk",

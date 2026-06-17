@@ -1,5 +1,6 @@
 import os
 import sys
+import platform
 import shutil
 import urllib.request
 import zipfile
@@ -82,12 +83,49 @@ FFMPEG_DIR = os.path.join(
     'GustavoTube', 'bin'
 )
 ffmpeg_location = None  # None = usar ffmpeg do PATH do sistema
+js_runtime = None       # Dict {runtime: config} aceito pelo yt-dlp, ex: {'deno': {'path': '/caminho'}}
 
 
 def _find_local_ffmpeg():
     """Retorna FFMPEG_DIR se o binário existir lá, caso contrário None."""
     exe = 'ffmpeg.exe' if os.name == 'nt' else 'ffmpeg'
     return FFMPEG_DIR if os.path.isfile(os.path.join(FFMPEG_DIR, exe)) else None
+
+
+def _find_local_deno():
+    """Retorna o caminho completo do deno se existir no FFMPEG_DIR, caso contrário None."""
+    exe = 'deno.exe' if os.name == 'nt' else 'deno'
+    path = os.path.join(FFMPEG_DIR, exe)
+    return path if os.path.isfile(path) else None
+
+
+def _node_version_ok():
+    """Retorna True se node está disponível e é >= 22 (mínimo do yt-dlp)."""
+    if not shutil.which('node'):
+        return False
+    try:
+        import subprocess
+        out = subprocess.run(['node', '--version'], capture_output=True, text=True, timeout=5)
+        major = int(out.stdout.strip().lstrip('v').split('.')[0])
+        return major >= 22
+    except Exception:
+        return False
+
+
+def _find_js_runtime():
+    """Retorna (runtime_dict, needs_download).
+    runtime_dict segue o formato aceito pelo yt-dlp: {'runtime': config_dict}.
+    """
+    if shutil.which('deno'):
+        return {'deno': {}}, False
+    if _node_version_ok():
+        return {'node': {}}, False
+    if shutil.which('qjs'):
+        return {'quickjs': {}}, False
+    local = _find_local_deno()
+    if local:
+        return {'deno': {'path': local}}, False
+    return None, True
 
 
 def ensure_ffmpeg(on_ready, on_error=None):
@@ -235,6 +273,129 @@ def _download_ffmpeg(on_ready, on_error=None):
     threading.Thread(target=worker, daemon=True).start()
 
 
+# === Gerenciamento do Runtime JavaScript (Deno) ===
+
+def ensure_js_runtime(on_ready, on_error=None):
+    """
+    Garante que um runtime JS está disponível para o yt-dlp.
+    Chama on_ready() quando pronto; faz download do Deno se necessário.
+    """
+    global js_runtime
+    spec, needs_download = _find_js_runtime()
+    if not needs_download:
+        js_runtime = spec
+        on_ready()
+        return
+    _download_deno(on_ready, on_error)
+
+
+def _download_deno(on_ready, on_error=None):
+    """Baixa o Deno para FFMPEG_DIR exibindo uma janela de progresso."""
+    global js_runtime
+
+    machine = platform.machine().lower()
+    if os.name == 'nt':
+        url = "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip"
+        bin_name = 'deno.exe'
+    elif sys.platform == 'darwin':
+        if machine in ('arm64', 'aarch64'):
+            url = "https://github.com/denoland/deno/releases/latest/download/deno-aarch64-apple-darwin.zip"
+        else:
+            url = "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-apple-darwin.zip"
+        bin_name = 'deno'
+    else:
+        url = "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip"
+        bin_name = 'deno'
+
+    dest = os.path.join(FFMPEG_DIR, bin_name)
+
+    win = tk.Toplevel(root)
+    win.title("Baixando dependências")
+    win.resizable(False, False)
+    win.grab_set()
+
+    w, h = 440, 135
+    sw = win.winfo_screenwidth()
+    sh = win.winfo_screenheight()
+    win.geometry(f"{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2}")
+
+    ttk.Label(
+        win,
+        text="Baixando Deno (runtime JavaScript necessário)...",
+        font=('', 10)
+    ).pack(padx=20, pady=(18, 6))
+
+    progress_var = tk.DoubleVar()
+    bar = ttk.Progressbar(win, variable=progress_var, maximum=100, length=400)
+    bar.pack(padx=20, pady=4)
+
+    status_lbl = ttk.Label(win, text="Conectando...")
+    status_lbl.pack(pady=(4, 0))
+
+    def set_ui(text, pct=None):
+        status_lbl.config(text=text)
+        if pct is not None:
+            progress_var.set(pct)
+
+    def worker():
+        global js_runtime
+        try:
+            os.makedirs(FFMPEG_DIR, exist_ok=True)
+            tmp_path = os.path.join(tempfile.gettempdir(), 'deno_dl_tmp.zip')
+
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                total = int(resp.headers.get('Content-Length', 0))
+                downloaded = 0
+                with open(tmp_path, 'wb') as f:
+                    while True:
+                        data = resp.read(65536)
+                        if not data:
+                            break
+                        f.write(data)
+                        downloaded += len(data)
+                        if total:
+                            pct = downloaded * 100 / total
+                            d_mb = downloaded / 1048576
+                            t_mb = total / 1048576
+                            win.after(0, lambda p=pct, d=d_mb, t=t_mb:
+                                      set_ui(f"Baixando... {int(p)}%  ({d:.1f} MB / {t:.1f} MB)", p))
+
+            win.after(0, lambda: set_ui("Extraindo...", 100))
+
+            with zipfile.ZipFile(tmp_path, 'r') as zf:
+                for name in zf.namelist():
+                    if os.path.basename(name) == bin_name:
+                        with zf.open(name) as src, open(dest, 'wb') as dst:
+                            dst.write(src.read())
+                        if os.name != 'nt':
+                            os.chmod(dest, 0o755)
+                        break
+
+            os.remove(tmp_path)
+            js_runtime = {'deno': {'path': dest}}
+
+            def finish():
+                win.destroy()
+                on_ready()
+            win.after(0, finish)
+
+        except Exception as exc:
+            def handle_err():
+                win.destroy()
+                if on_error:
+                    on_error(str(exc))
+                else:
+                    messagebox.showerror(
+                        "Erro",
+                        f"Falha ao baixar Deno:\n{exc}\n\n"
+                        "Instale o Node.js ou o Deno manualmente e adicione ao PATH."
+                    )
+            win.after(0, handle_err)
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
 def update_selector(*args):
     format_choice = format_var.get()
     if format_choice == "MP3":
@@ -268,7 +429,10 @@ def download_video():
         return
 
     # Extrai o nome do vídeo sem baixar
-    with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+    _info_opts = {'quiet': True}
+    if js_runtime:
+        _info_opts['js_runtimes'] = js_runtime
+    with yt_dlp.YoutubeDL(_info_opts) as ydl:
         info = ydl.extract_info(url, download=False)
         default_filename = ydl.prepare_filename(info).rsplit(".", 1)[0]  # Obtém o nome original do vídeo
 
@@ -320,6 +484,9 @@ def download_video():
 
             if ffmpeg_location:
                 ydl_opts['ffmpeg_location'] = ffmpeg_location
+
+            if js_runtime:
+                ydl_opts['js_runtimes'] = js_runtime
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
@@ -434,14 +601,17 @@ download_button.grid(column=0, row=3, columnspan=2, pady=20)
 # Atualiza o seletor quando o formato é trocado
 format_var.trace("w", update_selector)
 
-# Verifica/baixa FFmpeg antes de exibir a janela principal
-def on_ffmpeg_ready():
+# Verifica/baixa FFmpeg e runtime JS antes de exibir a janela principal
+def _show_main_window():
     try:
         root.iconbitmap(resource_path('gustavotube.ico'))
     except Exception:
         pass
     root.deiconify()
     root.after(50, lambda: set_titlebar_color(root, '#FF0000'))
+
+def on_ffmpeg_ready():
+    ensure_js_runtime(_show_main_window)
 
 ensure_ffmpeg(on_ffmpeg_ready)
 root.mainloop()
