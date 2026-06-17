@@ -1,9 +1,162 @@
 import os
+import sys
+import shutil
+import urllib.request
+import zipfile
+import tempfile
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import yt_dlp
 import threading
 import re
+
+# === Gerenciamento do FFmpeg ===
+
+FFMPEG_DIR = os.path.join(
+    os.environ.get('APPDATA', os.path.expanduser('~')),
+    'GustavoTube', 'bin'
+)
+ffmpeg_location = None  # None = usar ffmpeg do PATH do sistema
+
+
+def _find_local_ffmpeg():
+    """Retorna FFMPEG_DIR se o binário existir lá, caso contrário None."""
+    exe = 'ffmpeg.exe' if os.name == 'nt' else 'ffmpeg'
+    return FFMPEG_DIR if os.path.isfile(os.path.join(FFMPEG_DIR, exe)) else None
+
+
+def ensure_ffmpeg(on_ready, on_error=None):
+    """
+    Garante que o ffmpeg está disponível.
+    Chama on_ready() quando pronto; faz download automático se necessário.
+    """
+    global ffmpeg_location
+
+    if shutil.which('ffmpeg'):       # Encontrado no PATH do sistema
+        ffmpeg_location = None
+        on_ready()
+        return
+
+    loc = _find_local_ffmpeg()       # Encontrado no cache local
+    if loc:
+        ffmpeg_location = loc
+        on_ready()
+        return
+
+    _download_ffmpeg(on_ready, on_error)  # Precisa baixar
+
+
+def _download_ffmpeg(on_ready, on_error=None):
+    """Baixa o FFmpeg para FFMPEG_DIR exibindo uma janela de progresso."""
+    global ffmpeg_location
+
+    win = tk.Toplevel(root)
+    win.title("Baixando dependências")
+    win.resizable(False, False)
+    win.grab_set()
+
+    w, h = 440, 135
+    sw = win.winfo_screenwidth()
+    sh = win.winfo_screenheight()
+    win.geometry(f"{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2}")
+
+    ttk.Label(
+        win,
+        text="Baixando FFmpeg (necessário para conversão)...",
+        font=('', 10)
+    ).pack(padx=20, pady=(18, 6))
+
+    progress_var = tk.DoubleVar()
+    bar = ttk.Progressbar(win, variable=progress_var, maximum=100, length=400)
+    bar.pack(padx=20, pady=4)
+
+    status_lbl = ttk.Label(win, text="Conectando...")
+    status_lbl.pack(pady=(4, 0))
+
+    def set_ui(text, pct=None):
+        status_lbl.config(text=text)
+        if pct is not None:
+            progress_var.set(pct)
+
+    def worker():
+        global ffmpeg_location
+        try:
+            os.makedirs(FFMPEG_DIR, exist_ok=True)
+
+            if os.name == 'nt':
+                url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+                targets = {'ffmpeg.exe', 'ffprobe.exe'}
+                archive_type = 'zip'
+            else:
+                url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+                targets = {'ffmpeg', 'ffprobe'}
+                archive_type = 'tar'
+
+            tmp_path = os.path.join(tempfile.gettempdir(), 'ffmpeg_dl_tmp')
+
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                total = int(resp.headers.get('Content-Length', 0))
+                downloaded = 0
+                with open(tmp_path, 'wb') as f:
+                    while True:
+                        data = resp.read(65536)
+                        if not data:
+                            break
+                        f.write(data)
+                        downloaded += len(data)
+                        if total:
+                            pct = downloaded * 100 / total
+                            d_mb = downloaded / 1048576
+                            t_mb = total / 1048576
+                            win.after(0, lambda p=pct, d=d_mb, t=t_mb:
+                                      set_ui(f"Baixando... {int(p)}%  ({d:.1f} MB / {t:.1f} MB)", p))
+
+            win.after(0, lambda: set_ui("Extraindo...", 100))
+
+            if archive_type == 'zip':
+                with zipfile.ZipFile(tmp_path, 'r') as zf:
+                    for name in zf.namelist():
+                        if os.path.basename(name) in targets:
+                            dest = os.path.join(FFMPEG_DIR, os.path.basename(name))
+                            with zf.open(name) as src, open(dest, 'wb') as dst:
+                                dst.write(src.read())
+            else:
+                import tarfile
+                with tarfile.open(tmp_path, 'r:xz') as tf:
+                    for member in tf.getmembers():
+                        if os.path.basename(member.name) in targets:
+                            fname = os.path.basename(member.name)
+                            source = tf.extractfile(member)
+                            if source:
+                                dest = os.path.join(FFMPEG_DIR, fname)
+                                with open(dest, 'wb') as dst:
+                                    dst.write(source.read())
+                                os.chmod(dest, 0o755)
+
+            os.remove(tmp_path)
+            ffmpeg_location = FFMPEG_DIR
+
+            def finish():
+                win.destroy()
+                on_ready()
+            win.after(0, finish)
+
+        except Exception as exc:
+            def handle_err():
+                win.destroy()
+                if on_error:
+                    on_error(str(exc))
+                else:
+                    messagebox.showerror(
+                        "Erro",
+                        f"Falha ao baixar FFmpeg:\n{exc}\n\n"
+                        "Instale o FFmpeg manualmente e adicione ao PATH."
+                    )
+            win.after(0, handle_err)
+
+    threading.Thread(target=worker, daemon=True).start()
+
 
 def update_selector(*args):
     format_choice = format_var.get()
@@ -88,6 +241,9 @@ def download_video():
                     'progress_hooks': [my_hook],
                 }
 
+            if ffmpeg_location:
+                ydl_opts['ffmpeg_location'] = ffmpeg_location
+
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
 
@@ -156,6 +312,7 @@ def open_file_directory(file_path):
 # Configuração da janela principal
 root = tk.Tk()
 root.title("GustavoTube 2.0")
+root.withdraw()  # Oculta até o FFmpeg estar pronto
 
 # Widgets
 url_label = ttk.Label(root, text="URL do vídeo:")
@@ -194,5 +351,9 @@ download_button.grid(column=0, row=3, columnspan=2, pady=20)
 # Atualiza o seletor quando o formato é trocado
 format_var.trace("w", update_selector)
 
-# Executa a aplicação
+# Verifica/baixa FFmpeg antes de exibir a janela principal
+def on_ffmpeg_ready():
+    root.deiconify()
+
+ensure_ffmpeg(on_ffmpeg_ready)
 root.mainloop()
