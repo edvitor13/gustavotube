@@ -441,7 +441,7 @@ def download_video():
 
     def fetch_info_thread():
         try:
-            _info_opts = {'quiet': True}
+            _info_opts = {'quiet': True, 'noplaylist': True}
             if js_runtime:
                 _info_opts['js_runtimes'] = js_runtime
             with yt_dlp.YoutubeDL(_info_opts) as ydl:
@@ -509,6 +509,7 @@ def _open_save_dialog(default_filename, format_choice, resolution_choice, url):
                     'format': f'bestvideo[height<={resolution_choice}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<={resolution_choice}]+bestaudio/best',
                     'outtmpl': save_path,
                     'merge_output_format': 'mp4',
+                    'noplaylist': True,
                     'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
                     'postprocessor_args': [
                         '-c:v', 'libx264', '-preset', 'slow', '-crf', '18',
@@ -519,6 +520,7 @@ def _open_save_dialog(default_filename, format_choice, resolution_choice, url):
             else:
                 ydl_opts = {
                     'format': 'bestaudio/best',
+                    'noplaylist': True,
                     'postprocessors': [{
                         'key': 'FFmpegExtractAudio',
                         'preferredcodec': 'mp3',
