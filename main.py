@@ -4,11 +4,76 @@ import shutil
 import urllib.request
 import zipfile
 import tempfile
+import webbrowser
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import yt_dlp
 import threading
 import re
+
+# === Utilitários ===
+
+def resource_path(relative):
+    """Resolve caminho tanto em desenvolvimento quanto no PyInstaller one-file."""
+    base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, relative)
+
+
+def set_titlebar_color(window, color_hex):
+    """Pinta a barra de título no Windows 11+ com a cor fornecida (hex #RRGGBB)."""
+    if os.name != 'nt':
+        return
+    try:
+        from ctypes import windll, c_int, byref
+        hwnd = windll.user32.GetParent(window.winfo_id())
+        if not hwnd:
+            hwnd = window.winfo_id()
+        r = int(color_hex[1:3], 16)
+        g = int(color_hex[3:5], 16)
+        b = int(color_hex[5:7], 16)
+        colorref = r | (g << 8) | (b << 16)
+        DWMWA_CAPTION_COLOR = 35
+        windll.dwmapi.DwmSetWindowAttribute(
+            hwnd, DWMWA_CAPTION_COLOR, byref(c_int(colorref)), 4
+        )
+    except Exception:
+        pass
+
+
+def show_about():
+    about = tk.Toplevel(root)
+    about.title("Sobre o GustavoTube")
+    about.resizable(False, False)
+    about.grab_set()
+
+    w, h = 370, 230
+    sw = about.winfo_screenwidth()
+    sh = about.winfo_screenheight()
+    about.geometry(f"{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2}")
+
+    try:
+        about.iconbitmap(resource_path('gustavotube.ico'))
+    except Exception:
+        pass
+
+    set_titlebar_color(about, '#FF0000')
+
+    tk.Label(about, text="GustavoTube 2.0", font=('', 15, 'bold'), fg='#FF0000').pack(pady=(20, 4))
+    tk.Label(about, text="Baixador de vídeos e músicas do YouTube.", font=('', 10)).pack()
+    tk.Label(about, text="Versão 2.0  •  06/2026", font=('', 9), fg='gray').pack(pady=(6, 14))
+
+    link = tk.Label(
+        about,
+        text="vitorproductions.com/gustavotube/",
+        font=('', 10, 'underline'),
+        fg='#0078D7',
+        cursor='hand2'
+    )
+    link.pack()
+    link.bind('<Button-1>', lambda e: webbrowser.open('https://vitorproductions.com/gustavotube/'))
+
+    ttk.Button(about, text="Fechar", command=about.destroy).pack(pady=(20, 0))
+
 
 # === Gerenciamento do FFmpeg ===
 
@@ -292,7 +357,8 @@ def download_video():
             progress_label.config(text=f"{int(p)}%") 
             if int(p) >= 100:
                 progress_window.title("Convertendo...")
-                progress_label.config(text=f"Convertendo para MP4...") 
+                converting_to = "MP3" if format_choice == "MP3" else "MP4"
+                progress_label.config(text=f"Convertendo para {converting_to}...")
             progress_window.update_idletasks()
 
     # Inicia o download em uma thread separada
@@ -313,6 +379,11 @@ def open_file_directory(file_path):
 root = tk.Tk()
 root.title("GustavoTube 2.0")
 root.withdraw()  # Oculta até o FFmpeg estar pronto
+
+# Menu
+menubar = tk.Menu(root)
+menubar.add_command(label="Sobre", command=show_about)
+root.config(menu=menubar)
 
 # Widgets
 url_label = ttk.Label(root, text="URL do vídeo:")
@@ -353,7 +424,12 @@ format_var.trace("w", update_selector)
 
 # Verifica/baixa FFmpeg antes de exibir a janela principal
 def on_ffmpeg_ready():
+    try:
+        root.iconbitmap(resource_path('gustavotube.ico'))
+    except Exception:
+        pass
     root.deiconify()
+    root.after(50, lambda: set_titlebar_color(root, '#FF0000'))
 
 ensure_ffmpeg(on_ffmpeg_ready)
 root.mainloop()
