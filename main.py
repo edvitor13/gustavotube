@@ -149,57 +149,69 @@ def _download_ffmpeg(on_ready, on_error=None):
             os.makedirs(FFMPEG_DIR, exist_ok=True)
 
             if os.name == 'nt':
-                url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
-                targets = {'ffmpeg.exe', 'ffprobe.exe'}
-                archive_type = 'zip'
+                jobs = [
+                    ("https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
+                     {'ffmpeg.exe', 'ffprobe.exe'}, 'zip'),
+                ]
+            elif sys.platform == 'darwin':
+                jobs = [
+                    ("https://evermeet.cx/ffmpeg/getrelease/zip", {'ffmpeg'}, 'zip'),
+                    ("https://evermeet.cx/ffprobe/getrelease/zip", {'ffprobe'}, 'zip'),
+                ]
             else:
-                url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
-                targets = {'ffmpeg', 'ffprobe'}
-                archive_type = 'tar'
+                jobs = [
+                    ("https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz",
+                     {'ffmpeg', 'ffprobe'}, 'tar'),
+                ]
 
-            tmp_path = os.path.join(tempfile.gettempdir(), 'ffmpeg_dl_tmp')
+            for job_idx, (url, targets, archive_type) in enumerate(jobs):
+                label = f"({job_idx + 1}/{len(jobs)}) " if len(jobs) > 1 else ""
+                tmp_path = os.path.join(tempfile.gettempdir(), f'ffmpeg_dl_tmp_{job_idx}')
 
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                total = int(resp.headers.get('Content-Length', 0))
-                downloaded = 0
-                with open(tmp_path, 'wb') as f:
-                    while True:
-                        data = resp.read(65536)
-                        if not data:
-                            break
-                        f.write(data)
-                        downloaded += len(data)
-                        if total:
-                            pct = downloaded * 100 / total
-                            d_mb = downloaded / 1048576
-                            t_mb = total / 1048576
-                            win.after(0, lambda p=pct, d=d_mb, t=t_mb:
-                                      set_ui(f"Baixando... {int(p)}%  ({d:.1f} MB / {t:.1f} MB)", p))
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=120) as resp:
+                    total = int(resp.headers.get('Content-Length', 0))
+                    downloaded = 0
+                    with open(tmp_path, 'wb') as f:
+                        while True:
+                            data = resp.read(65536)
+                            if not data:
+                                break
+                            f.write(data)
+                            downloaded += len(data)
+                            if total:
+                                pct = downloaded * 100 / total
+                                d_mb = downloaded / 1048576
+                                t_mb = total / 1048576
+                                win.after(0, lambda p=pct, d=d_mb, t=t_mb, l=label:
+                                          set_ui(f"{l}Baixando... {int(p)}%  ({d:.1f} MB / {t:.1f} MB)", p))
 
-            win.after(0, lambda: set_ui("Extraindo...", 100))
+                win.after(0, lambda l=label: set_ui(f"{l}Extraindo...", 100))
 
-            if archive_type == 'zip':
-                with zipfile.ZipFile(tmp_path, 'r') as zf:
-                    for name in zf.namelist():
-                        if os.path.basename(name) in targets:
-                            dest = os.path.join(FFMPEG_DIR, os.path.basename(name))
-                            with zf.open(name) as src, open(dest, 'wb') as dst:
-                                dst.write(src.read())
-            else:
-                import tarfile
-                with tarfile.open(tmp_path, 'r:xz') as tf:
-                    for member in tf.getmembers():
-                        if os.path.basename(member.name) in targets:
-                            fname = os.path.basename(member.name)
-                            source = tf.extractfile(member)
-                            if source:
-                                dest = os.path.join(FFMPEG_DIR, fname)
-                                with open(dest, 'wb') as dst:
-                                    dst.write(source.read())
-                                os.chmod(dest, 0o755)
+                if archive_type == 'zip':
+                    with zipfile.ZipFile(tmp_path, 'r') as zf:
+                        for name in zf.namelist():
+                            if os.path.basename(name) in targets:
+                                dest = os.path.join(FFMPEG_DIR, os.path.basename(name))
+                                with zf.open(name) as src, open(dest, 'wb') as dst:
+                                    dst.write(src.read())
+                                if os.name != 'nt':
+                                    os.chmod(dest, 0o755)
+                else:
+                    import tarfile
+                    with tarfile.open(tmp_path, 'r:xz') as tf:
+                        for member in tf.getmembers():
+                            if os.path.basename(member.name) in targets:
+                                fname = os.path.basename(member.name)
+                                source = tf.extractfile(member)
+                                if source:
+                                    dest = os.path.join(FFMPEG_DIR, fname)
+                                    with open(dest, 'wb') as dst:
+                                        dst.write(source.read())
+                                    os.chmod(dest, 0o755)
 
-            os.remove(tmp_path)
+                os.remove(tmp_path)
+
             ffmpeg_location = FFMPEG_DIR
 
             def finish():

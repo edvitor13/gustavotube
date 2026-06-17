@@ -26,7 +26,8 @@ a = Analysis(
         "pycryptodomex",
         "requests",
         "urllib3",
-        "websockets"
+        "websockets",
+        "webbrowser
     ],
     hookspath=[],
     hooksconfig={},
