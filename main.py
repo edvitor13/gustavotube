@@ -60,9 +60,20 @@ def download_video():
         try:
             if format_choice == "MP4":
                 ydl_opts = {
-                    'format': f'bestvideo[height<={resolution_choice}]+bestaudio/best',
+                    'format': f'bestvideo[height<={resolution_choice}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<={resolution_choice}]+bestaudio/best',
                     'outtmpl': save_path,  # Salva no caminho escolhido
                     'merge_output_format': 'mp4',
+                    'postprocessors': [{
+                        'key': 'FFmpegVideoConvertor',
+                        'preferedformat': 'mp4',
+                    }],
+                    'postprocessor_args': [
+                        '-c:v', 'libx264',
+                        '-preset', 'slow',
+                        '-crf', '18',
+                        '-c:a', 'aac',
+                        '-b:a', '320k',
+                    ],
                     'progress_hooks': [my_hook],
                 }
             elif format_choice == "MP3":
