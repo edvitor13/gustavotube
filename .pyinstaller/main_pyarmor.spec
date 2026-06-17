@@ -7,7 +7,8 @@ a = Analysis(
     binaries=[],
     datas=[
         ("pyarmor_runtime_000000", "pyarmor_runtime_000000"),
-        ("gustavotube", "gustavotube")
+        ("gustavotube", "gustavotube"),
+        ("gustavotube.ico", ".")
     ],
     hiddenimports=[
         "gustavotube",

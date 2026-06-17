@@ -6,7 +6,8 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
-        ("gustavotube", "gustavotube")
+        ("gustavotube", "gustavotube"),
+        ("gustavotube.ico", ".")
     ],
     hiddenimports=[
         "gustavotube",
@@ -27,7 +28,7 @@ a = Analysis(
         "requests",
         "urllib3",
         "websockets",
-        "webbrowser
+        "webbrowser"
     ],
     hookspath=[],
     hooksconfig={},
