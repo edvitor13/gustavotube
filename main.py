@@ -416,61 +416,107 @@ def update_selector(*args):
         ]
         resolution_var.set("1080 (FHD)") 
 
+def _set_loading(loading: bool):
+    """Alterna o estado de loading do botão e a barra indeterminada."""
+    if loading:
+        download_button.config(state='disabled', text='Buscando...')
+        loading_bar.grid(column=0, row=4, columnspan=2, sticky='ew', padx=20, pady=(0, 14))
+        loading_bar.start(15)
+    else:
+        loading_bar.stop()
+        loading_bar.grid_remove()
+        download_button.config(state='normal', text='Baixar')
+
+
 def download_video():
     url = url_entry.get()
     format_choice = format_var.get()
-    resolution_choice = resolution_var.get()
-
-    # Extrai apenas o valor numérico da resolução
-    resolution_choice = resolution_choice.split(" ")[0] 
+    resolution_choice = resolution_var.get().split(' ')[0]
 
     if not url:
-        messagebox.showwarning("Input Error", "Por favor, insira uma URL do YouTube.")
+        messagebox.showwarning('Input Error', 'Por favor, insira uma URL do YouTube.')
         return
 
-    # Extrai o nome do vídeo sem baixar
-    _info_opts = {'quiet': True}
-    if js_runtime:
-        _info_opts['js_runtimes'] = js_runtime
-    with yt_dlp.YoutubeDL(_info_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
-        default_filename = ydl.prepare_filename(info).rsplit(".", 1)[0]  # Obtém o nome original do vídeo
+    _set_loading(True)
 
-    # Abre o diálogo para escolher o local e o nome do arquivo
+    def fetch_info_thread():
+        try:
+            _info_opts = {'quiet': True}
+            if js_runtime:
+                _info_opts['js_runtimes'] = js_runtime
+            with yt_dlp.YoutubeDL(_info_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                default_filename = ydl.prepare_filename(info).rsplit('.', 1)[0]
+        except Exception as e:
+            root.after(0, lambda: (
+                _set_loading(False),
+                messagebox.showerror('Erro', f'Não foi possível obter informações do vídeo:\n{e}')
+            ))
+            return
+
+        root.after(0, lambda: _open_save_dialog(default_filename, format_choice, resolution_choice, url))
+
+    threading.Thread(target=fetch_info_thread, daemon=True).start()
+
+
+def _open_save_dialog(default_filename, format_choice, resolution_choice, url):
+    _set_loading(False)
+
     save_path = filedialog.asksaveasfilename(
-        initialdir=".", 
-        title="Salvar arquivo como", 
-        initialfile=default_filename, 
-        defaultextension=f".{format_choice.lower()}",
-        filetypes=[(f"Arquivo {format_choice}", f"*.{format_choice.lower()}")]
+        initialdir='.',
+        title='Salvar arquivo como',
+        initialfile=default_filename,
+        defaultextension=f'.{format_choice.lower()}',
+        filetypes=[(f'Arquivo {format_choice}', f'*.{format_choice.lower()}')]
     )
-    
-    if not save_path:
-        return  # O usuário cancelou a seleção
 
-    ydl_opts = {}
+    if not save_path:
+        return
+
+    # === Janela de progresso ===
+    progress_window = tk.Toplevel(root)
+    progress_window.title('Baixando...')
+    progress_window.resizable(False, False)
+    progress_window.grab_set()
+
+    w, h = 300, 100
+    sw = progress_window.winfo_screenwidth()
+    sh = progress_window.winfo_screenheight()
+    progress_window.geometry(f'{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2}')
+
+    progress_var = tk.DoubleVar()
+    progress_bar = ttk.Progressbar(progress_window, variable=progress_var, maximum=100)
+    progress_bar.pack(padx=20, pady=20)
+
+    progress_label = ttk.Label(progress_window, text='0%')
+    progress_label.pack()
+
+    def my_hook(d):
+        if d['status'] == 'downloading':
+            p = re.sub(r'\x1b\[[0-9;]*m', '', d['_percent_str'])
+            p = float(p.replace('%', ''))
+            progress_var.set(p)
+            progress_label.config(text=f'{int(p)}%')
+            if int(p) >= 100:
+                progress_window.title('Convertendo...')
+                progress_label.config(text=f'Convertendo para {format_choice}...')
+            progress_window.update_idletasks()
 
     def download_thread():
         try:
-            if format_choice == "MP4":
+            if format_choice == 'MP4':
                 ydl_opts = {
                     'format': f'bestvideo[height<={resolution_choice}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<={resolution_choice}]+bestaudio/best',
-                    'outtmpl': save_path,  # Salva no caminho escolhido
+                    'outtmpl': save_path,
                     'merge_output_format': 'mp4',
-                    'postprocessors': [{
-                        'key': 'FFmpegVideoConvertor',
-                        'preferedformat': 'mp4',
-                    }],
+                    'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
                     'postprocessor_args': [
-                        '-c:v', 'libx264',
-                        '-preset', 'slow',
-                        '-crf', '18',
-                        '-c:a', 'aac',
-                        '-b:a', '320k',
+                        '-c:v', 'libx264', '-preset', 'slow', '-crf', '18',
+                        '-c:a', 'aac', '-b:a', '320k',
                     ],
                     'progress_hooks': [my_hook],
                 }
-            elif format_choice == "MP3":
+            else:
                 ydl_opts = {
                     'format': 'bestaudio/best',
                     'postprocessors': [{
@@ -478,70 +524,33 @@ def download_video():
                         'preferredcodec': 'mp3',
                         'preferredquality': resolution_choice,
                     }],
-                    'outtmpl': save_path, 
+                    'outtmpl': save_path,
                     'progress_hooks': [my_hook],
                 }
 
             if ffmpeg_location:
                 ydl_opts['ffmpeg_location'] = ffmpeg_location
-
             if js_runtime:
                 ydl_opts['js_runtimes'] = js_runtime
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
 
-            messagebox.showinfo("Sucesso", "Download concluído!")
-            progress_window.destroy()
-            progress_window.grab_release()
-
-            # Abre o diretório com o arquivo selecionado
-            open_file_directory(save_path)
+            progress_window.after(0, lambda: (
+                progress_window.destroy(),
+                progress_window.grab_release(),
+                messagebox.showinfo('Sucesso', 'Download concluído!'),
+                open_file_directory(save_path)
+            ))
 
         except Exception as e:
-            messagebox.showerror("Erro", f"Ocorreu um erro ao baixar o vídeo: {str(e)}")
-            progress_window.destroy()
-            progress_window.grab_release()
+            progress_window.after(0, lambda: (
+                progress_window.destroy(),
+                progress_window.grab_release(),
+                messagebox.showerror('Erro', f'Ocorreu um erro ao baixar o vídeo:\n{e}')
+            ))
 
-    # Cria uma nova janela para a barra de progresso
-    progress_window = tk.Toplevel(root)
-    progress_window.title("Baixando...")
-    progress_window.grab_set()  # Trava a tela principal
-
-    # Centraliza a janela de progresso e define a largura
-    progress_window.update_idletasks()
-    screen_width = progress_window.winfo_screenwidth()
-    screen_height = progress_window.winfo_screenheight()
-    window_width = 300  # Define a largura desejada
-    window_height = 100
-    x = (screen_width - window_width) // 2
-    y = (screen_height - window_height) // 2
-    progress_window.geometry(f"{window_width}x{window_height}+{x}+{y}")
-
-    progress_var = tk.DoubleVar()
-    progress_bar = ttk.Progressbar(progress_window, variable=progress_var, maximum=100)
-    progress_bar.pack(padx=20, pady=20)
-
-    progress_label = ttk.Label(progress_window, text="0%")
-    progress_label.pack()
-
-    # Função para atualizar a barra de progresso
-    def my_hook(d):
-        if d['status'] == 'downloading':
-            p = d['_percent_str']
-            # Remove caracteres de escape ANSI antes da conversão
-            p = re.sub(r'\x1b\[[0-9;]*m', '', p) 
-            p = float(p.replace('%', ''))
-            progress_var.set(p)
-            progress_label.config(text=f"{int(p)}%") 
-            if int(p) >= 100:
-                progress_window.title("Convertendo...")
-                converting_to = "MP3" if format_choice == "MP3" else "MP4"
-                progress_label.config(text=f"Convertendo para {converting_to}...")
-            progress_window.update_idletasks()
-
-    # Inicia o download em uma thread separada
-    threading.Thread(target=download_thread).start()
+    threading.Thread(target=download_thread, daemon=True).start()
 
 def open_file_directory(file_path):
     folder_path = os.path.dirname(file_path)
@@ -595,8 +604,11 @@ resolution_dropdown['values'] = [
 resolution_dropdown.grid(column=1, row=2, padx=10, pady=10)
 resolution_dropdown.current(2) 
 
-download_button = ttk.Button(root, text="Baixar", command=download_video)
-download_button.grid(column=0, row=3, columnspan=2, pady=20)
+download_button = ttk.Button(root, text='Baixar', command=download_video)
+download_button.grid(column=0, row=3, columnspan=2, pady=(20, 6))
+
+loading_bar = ttk.Progressbar(root, mode='indeterminate', length=240)
+# grid_remove() mantém as configurações; só exibido durante o loading
 
 # Atualiza o seletor quando o formato é trocado
 format_var.trace("w", update_selector)
