@@ -1,9 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
+import sys
 from PyInstaller.utils.hooks import collect_data_files
 
-# Resolve the icon path relative to this spec file so PyInstaller finds it
-ICON_PATH = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', 'gustavotube.ico'))
+# Resolve the icon path relative to the spec invocation so PyInstaller finds it
+# Use sys.argv[0] because __file__ may be undefined when PyInstaller executes the spec
+ICON_PATH = os.path.normpath(os.path.join(os.path.dirname(sys.argv[0]), '..', 'gustavotube.ico'))
 
 a = Analysis(
     ['main.py'],
