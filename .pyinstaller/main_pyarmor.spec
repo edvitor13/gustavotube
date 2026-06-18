@@ -1,5 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
 from PyInstaller.utils.hooks import collect_data_files
+
+# Resolve the icon path relative to this spec file so PyInstaller finds it
+ICON_PATH = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', 'gustavotube.ico'))
 
 a = Analysis(
     ['main.py'],
@@ -8,7 +12,7 @@ a = Analysis(
     datas=[
         ("pyarmor_runtime_000000", "pyarmor_runtime_000000"),
         ("gustavotube", "gustavotube"),
-        ("gustavotube.ico", "."),
+        (ICON_PATH, "."),
         *collect_data_files('yt_dlp_ejs'),
     ],
     hiddenimports=[
@@ -49,7 +53,7 @@ exe = EXE(
     a.datas,
     [],
     name='GustavoTube',
-    icon='.pyinstaller/gustavotube.ico',
+    icon=ICON_PATH,
     version='.pyinstaller/versionfile.txt',
     debug=False,
     bootloader_ignore_signals=False,
