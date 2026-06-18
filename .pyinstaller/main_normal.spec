@@ -1,9 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-import os
 from PyInstaller.utils.hooks import collect_data_files
-
-# Resolve the icon path from the current working directory (where pyinstaller is invoked)
-ICON_PATH = os.path.abspath('gustavotube.ico')
 
 a = Analysis(
     ['main.py'],
@@ -11,7 +7,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ("gustavotube", "gustavotube"),
-        (ICON_PATH, "."),
+        ("gustavotube.ico", "."),
         *collect_data_files('yt_dlp_ejs'),
     ],
     hiddenimports=[
@@ -52,7 +48,7 @@ exe = EXE(
     a.datas,
     [],
     name='GustavoTube',
-    icon=ICON_PATH,
+    icon='gustavotube.ico',
     version='.pyinstaller/versionfile.txt',
     debug=False,
     bootloader_ignore_signals=False,
