@@ -39,6 +39,9 @@ jobs:
 
       - name: Mover RunTime Pyarmor para Diretorio PyArmor
         run: cd .. && cp -r dist/pyarmor_runtime_000000 dist/gustavotube
+
+      - name: Copiar ícone para diretório de build
+        run: cd .. && cp gustavotube/gustavotube.ico dist/gustavotube/
       
       - name: Gerar executável com PyInstaller
         run: cd .. && cd dist/gustavotube && pyinstaller main_pyarmor.spec
@@ -84,6 +87,9 @@ jobs:
 
       - name: Mover RunTime Pyarmor para Diretorio PyArmor
         run: cd .. && cp -r dist/pyarmor_runtime_000000 dist/gustavotube
+
+      - name: Copiar ícone para diretório de build
+        run: cd .. && cp gustavotube/gustavotube.ico dist/gustavotube/
       
       - name: Gerar executável com PyInstaller
         run: cd .. && cd dist/gustavotube && pyinstaller main_pyarmor.spec
@@ -130,6 +136,9 @@ jobs:
 
       - name: Mover RunTime Pyarmor para Diretorio PyArmor
         run: cd .. && cp -r dist/pyarmor_runtime_000000 dist/gustavotube
+
+      - name: Copiar ícone para diretório de build
+        run: cd .. && cp gustavotube/gustavotube.ico dist/gustavotube/
       
       - name: Gerar executável com PyInstaller
         run: cd .. && cd dist/gustavotube && pyinstaller main_pyarmor.spec
