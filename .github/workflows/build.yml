@@ -146,11 +146,16 @@ jobs:
       - name: Mover Executável para Diretorio Raiz
         run: cd .. && cp -r dist/gustavotube/dist gustavotube
 
-      - name: Uploadar Executavel
+      - name: Tornar executável e empacotar
+        run: |
+          chmod +x dist/gustavotube
+          tar -czf GustavoTube-macOS.tar.gz -C dist gustavotube
+
+      - name: Uploadar executável (tar.gz)
         uses: actions/upload-artifact@v4
         with:
-          name: GustavoTube-macOS-12
-          path: dist/GustavoTube
+          name: GustavoTube-macOS
+          path: GustavoTube-macOS.tar.gz
 
   release:
     name: release
